@@ -57,6 +57,24 @@ pytest -s
 > Note Groq's free-tier daily token cap (~100K/day on the 70B model); use
 > `GROQ_MODEL=llama-3.1-8b-instant` for a higher limit.
 
+## Chatting with your meetings
+
+Both run **locally** (no hosting needed). Ingest a meeting first, then pick one:
+
+```
+# 1. load data
+python run_ingest.py sample/q3_sync.json
+
+# 2a. terminal chat (simplest)
+python chat.py                  # add --company <id> or --verbose
+
+# 2b. browser chat UI
+streamlit run app.py            # opens http://localhost:8501
+```
+
+> On a low-RAM machine using Groq, prefix with `GROQ_MODEL=llama-3.1-8b-instant`
+> while the 70B daily token cap resets.
+
 ## Configuration
 
 Copy `.env.example` to `.env` and adjust as needed. The default Ollama path
