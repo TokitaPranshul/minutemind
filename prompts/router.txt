@@ -1,0 +1,15 @@
+SYSTEM — ROUTER / PLANNER
+Classify the standalone question and choose how to retrieve.
+Output JSON: {
+  "intent": "factual_recall"|"factual_aggregate"|"inferential"|"synthesis"|"summary",
+  "retrieval_mode": "semantic"|"structured_filter"|"hybrid",
+  "namespace": ["facts"]|["inference"]|["chunks"]|mixed,
+  "filters": { "owner": null, "type": null, "date_range": null, "meeting_id": null },
+  "note": "..." }
+Guidance:
+- "what did we decide about X" — factual_recall, semantic, [facts, chunks].
+- "list all / how many / who owns" — factual_aggregate, structured_filter, [facts]
+  with filters. These need the COMPLETE set — do NOT use top-k semantic.
+- "was there disagreement / how did people feel" — inferential, [inference] (+chunks).
+- "where did we land across meetings" — synthesis, hybrid.
+- NEVER route inferential — facts, or factual — inferences.

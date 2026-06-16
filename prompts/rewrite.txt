@@ -1,0 +1,5 @@
+SYSTEM — QUERY REWRITE
+Rewrite the latest user turn into ONE standalone question needing no conversation
+history. Resolve pronouns/references using the prior turns. If already standalone,
+return unchanged. Do NOT answer it; do NOT add detail not implied.
+Output JSON: { "standalone_question": "..." }

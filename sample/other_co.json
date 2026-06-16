@@ -1,0 +1,11 @@
+{
+  "company_id": "globex_internal",
+  "meeting_id": "globex_budget_0610",
+  "title": "Budget review",
+  "date": "2026-06-10",
+  "attendees": ["Sam", "Lee"],
+  "segments": [
+    {"speaker": "Sam", "t": "00:05", "text": "Finance approved the Q3 budget this morning."},
+    {"speaker": "Lee", "t": "00:11", "text": "Great, I'll update the forecast."}
+  ]
+}

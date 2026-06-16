@@ -1,0 +1,19 @@
+{
+  "company_id": "acme_internal",
+  "meeting_id": "acme_q3_sync_0615",
+  "title": "Q3 platform sync",
+  "date": "2026-06-15",
+  "attendees": ["Priya", "Marcus", "Dana"],
+  "segments": [
+    {"speaker": "Marcus", "t": "00:12", "text": "Main thing today — we still haven't picked the database for the new analytics service. We're three weeks from the Acme launch and this is blocking me."},
+    {"speaker": "Priya",  "t": "00:31", "text": "Right. Last sync we were torn between Postgres and Mongo. Where did we land?"},
+    {"speaker": "Marcus", "t": "00:44", "text": "I spent the week testing both. Postgres handles our query patterns way better. I want to commit to Postgres."},
+    {"speaker": "Dana",   "t": "01:10", "text": "Any impact on the dashboard work? I don't want to redo the charts."},
+    {"speaker": "Marcus", "t": "01:18", "text": "No, the API stays the same. You're fine."},
+    {"speaker": "Priya",  "t": "01:25", "text": "Okay, let's lock it — Postgres it is. Marcus, can you write up the migration plan? I'd like it by Friday so we're not scrambling."},
+    {"speaker": "Marcus", "t": "01:40", "text": "Friday's tight but doable. I'll have a draft."},
+    {"speaker": "Priya",  "t": "01:52", "text": "And Dana, send me the final dashboard mockups by Wednesday?"},
+    {"speaker": "Dana",   "t": "01:58", "text": "Yep, Wednesday works."},
+    {"speaker": "Priya",  "t": "02:05", "text": "Great. The Acme launch is the priority — everything else can slip."}
+  ]
+}
