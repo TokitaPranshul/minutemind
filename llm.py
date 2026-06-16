@@ -76,6 +76,8 @@ def chat(system, user, json=True, temperature=0.1):
         raw = _chat_ollama(sys_prompt, user, json, temperature)
     elif backend == "gemini":
         raw = _chat_gemini(sys_prompt, user, json, temperature)
+    elif backend == "groq":
+        raw = _chat_groq(sys_prompt, user, json, temperature)
     elif backend == "openai":
         raw = _chat_openai(sys_prompt, user, json, temperature)
     else:
@@ -104,18 +106,39 @@ def _chat_ollama(system, user, json_mode, temperature):
 
 
 def _chat_gemini(system, user, json_mode, temperature):
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types
 
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-    model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-    generation_config = {"temperature": temperature}
-    if json_mode:
-        generation_config["response_mime_type"] = "application/json"
-    model = genai.GenerativeModel(
-        model_name, system_instruction=system, generation_config=generation_config
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    config = types.GenerateContentConfig(
+        system_instruction=system,
+        temperature=temperature,
+        response_mime_type="application/json" if json_mode else "text/plain",
     )
-    resp = model.generate_content(user)
+    resp = client.models.generate_content(
+        model=model_name, contents=user, config=config
+    )
     return resp.text
+
+
+def _chat_groq(system, user, json_mode, temperature):
+    from groq import Groq
+
+    client = Groq(api_key=os.environ["GROQ_API_KEY"])
+    model_name = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    kwargs = {
+        "model": model_name,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "temperature": temperature,
+    }
+    if json_mode:
+        kwargs["response_format"] = {"type": "json_object"}
+    resp = client.chat.completions.create(**kwargs)
+    return resp.choices[0].message.content
 
 
 def _chat_openai(system, user, json_mode, temperature):

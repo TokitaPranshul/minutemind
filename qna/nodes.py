@@ -5,6 +5,7 @@ Task subgraph: rewrite -> router -> retrieve -> compose -> answer_gate
 """
 import importlib.util
 import json
+import re
 
 import config
 import llm
@@ -38,19 +39,44 @@ def _history_block(chat_history, n=3):
 # ---------------------------------------------------------------------------
 # classifier
 # ---------------------------------------------------------------------------
-_SOCIAL_RE = __import__("re").compile(
-    r"^\s*(hey+|hi+|hello+|howdy|yo+|sup|greetings|"
-    r"thanks?|thank\s+you|thx|cheers|bye+|goodbye+|"
-    r"that'?s?\s+all|see\s+ya|later|ok+|okay+|cool+|"
-    r"great|awesome|got\s+it|sounds?\s+good)\W*$",
-    __import__("re").IGNORECASE,
-)
+# A turn is "social" if EVERY word in it is a greeting/closing token (so compound
+# phrases like "thanks, that's all" are caught, not just single tokens).
+_SOCIAL_WORDS = {
+    "hey", "hi", "hello", "howdy", "yo", "sup", "greetings", "morning", "afternoon",
+    "thanks", "thank", "you", "thx", "ty", "cheers", "bye", "goodbye",
+    "that", "thats", "that's", "all", "see", "ya", "you", "later", "soon",
+    "ok", "okay", "k", "cool", "great", "awesome", "nice", "got", "it",
+    "sounds", "good", "perfect", "much", "appreciate", "appreciated", "help", "helpful",
+}
 
-_OOS_RE = __import__("re").compile(
+
+def _is_social(text):
+    tokens = re.findall(r"[a-z']+", (text or "").lower())
+    return bool(tokens) and all(t in _SOCIAL_WORDS for t in tokens)
+
+
+_OOS_RE = re.compile(
     r"(capital\s+of|weather\s+in|who\s+is\s+the\s+president|"
     r"what\s+is\s+\d|calculate|recipe\s+for|translate\s+)",
-    __import__("re").IGNORECASE,
+    re.IGNORECASE,
 )
+
+
+def _prev_assistant_was_clarifying(chat_history):
+    """True if the most recent assistant turn was a clarifying question.
+
+    A short user reply that follows such a question is a `clarify_answer`, not a
+    fresh ambiguous task. The classifier prompt names the type but gives no rule
+    for detecting it, so we detect it deterministically here.
+    """
+    for m in reversed(chat_history or []):
+        if m.get("role") == "assistant":
+            t = (m.get("content") or "").strip().lower()
+            return t.endswith("?") and any(
+                k in t
+                for k in ("which", "do you mean", "more specific", "what would you", "be a bit more")
+            )
+    return False
 
 
 def classifier_node(state):
@@ -60,15 +86,26 @@ def classifier_node(state):
     print(f"  latest_turn: {latest!r}")
 
     # deterministic pre-filter for obvious social/oos patterns
-    if _SOCIAL_RE.match(latest):
+    if _is_social(latest):
         print("  turn_type=social (pre-filter)")
         return {"turn_type": "social"}
     if _OOS_RE.search(latest):
         print("  turn_type=out_of_scope (pre-filter)")
         return {"turn_type": "out_of_scope"}
+    # a reply to the assistant's clarifying question is a clarify_answer
+    if _prev_assistant_was_clarifying(state.get("chat_history", [])):
+        print("  turn_type=clarify_answer (pre-filter: follows a clarifying question)")
+        return {"turn_type": "clarify_answer"}
 
     system = _load_prompt("turn_classifier.txt")
-    user = f"PRIOR TURNS:\n{history}\n\nLATEST USER TURN:\n{latest}"
+    user = (
+        f"PRIOR TURNS:\n{history}\n\nLATEST USER TURN:\n{latest}\n\n"
+        "GUIDANCE: A turn that names a specific person, decision, topic, or action "
+        "item is answerable from meeting data -> 'task'. Use 'task_ambiguous' ONLY "
+        "when the turn has no disambiguator at all (e.g. 'what did we decide?' with no "
+        "topic named). If the latest turn answers the assistant's clarifying question, "
+        "label it 'clarify_answer'."
+    )
     try:
         raw = llm.chat(system, user, json=True, temperature=0.1)
         cls = TurnClassification.model_validate(raw)
@@ -138,11 +175,29 @@ def rewrite_node(state):
 # ---------------------------------------------------------------------------
 # router
 # ---------------------------------------------------------------------------
+# questions that need the COMPLETE set (per person / list / count) -> structured_filter
+_OWNER_AGG_RE = re.compile(
+    r"\b(what (does|do|is|are)\s+\w+\s+(owe|owes|own|owns|need|have|responsible|"
+    r"working on|on the hook)|"
+    r"\w+'s\s+(action items?|tasks?|to-?dos?)|"
+    r"action items?\s+for|tasks?\s+for|assigned to|responsible for|"
+    r"list (all|the)|how many|who owns|who is responsible)\b",
+    re.IGNORECASE,
+)
+
+
 def router_node(state):
     print("\n=== [router] ===")
     question = state.get("standalone_question") or state["latest_turn"]
     system = _load_prompt("router.txt")
-    user = f"STANDALONE QUESTION:\n{question}"
+    user = (
+        f"STANDALONE QUESTION:\n{question}\n\n"
+        "GUIDANCE: If the question asks what a specific person owes/owns/must do or is "
+        "responsible for, or asks to list/count items by person or topic, it needs the "
+        "COMPLETE set: intent=factual_aggregate, retrieval_mode=structured_filter, "
+        "namespace=[\"facts\"], with the owner/type filter set. Do NOT use semantic "
+        "top-k for these."
+    )
     try:
         raw = llm.chat(system, user, json=True, temperature=0.1)
         route = RouterOutput.model_validate(raw).model_dump()
@@ -155,6 +210,16 @@ def router_node(state):
             "filters": {},
             "note": "fallback",
         }
+    # deterministic safety net: per-person / aggregate questions must use the
+    # complete fact set, never top-k semantic (LLM routers are inconsistent here).
+    if _OWNER_AGG_RE.search(question):
+        route["intent"] = "factual_aggregate"
+        route["retrieval_mode"] = "structured_filter"
+        route["namespace"] = ["facts"]
+        # take the COMPLETE fact set and let the composer scope to the person;
+        # a hallucinated owner filter (e.g. "finance") would wrongly empty the set.
+        route["filters"] = {}
+        route["note"] = (route.get("note") or "") + " [structured_filter nudge]"
     print(f"  route: {route}")
     return {"route": route}
 
@@ -322,6 +387,20 @@ def _code_isolation_ok(retrieved, company_id):
     return True
 
 
+# the composer (per prompt rule A2) says so plainly when the evidence can't answer.
+# Such a draft must BAIL with the canonical "not in your meetings" message rather
+# than be passed through as if it were a real answer.
+_NON_ANSWER_RE = re.compile(
+    r"(does(n't| not) (answer|address|cover|mention)|"
+    r"do(n't| not) have|"
+    r"no (evidence|information|record|meeting|mention|data)|"
+    r"not (mentioned|found|covered|in (your|the) meetings?)|"
+    r"can(not|'t) (find|answer|determine)|"
+    r"isn't (mentioned|covered|in)|nothing (about|on|in the))",
+    re.IGNORECASE,
+)
+
+
 def answer_gate_node(state):
     print("\n=== [answer_gate] ===")
     company_id = state["company_id"]
@@ -340,6 +419,12 @@ def answer_gate_node(state):
             print("  no evidence/draft -> RETRY")
             return {"gate_verdict": "RETRY", "retry_count": retry_count + 1}
         print("  no evidence after retries -> BAIL")
+        return {"gate_verdict": "BAIL", "final_answer": fixed_responses.NO_RESULTS}
+
+    # The composer admitted the evidence doesn't answer -> bail honestly instead of
+    # surfacing the hedge as an "answer".
+    if _NON_ANSWER_RE.search(draft):
+        print("  draft is a non-answer -> BAIL with NO_RESULTS")
         return {"gate_verdict": "BAIL", "final_answer": fixed_responses.NO_RESULTS}
 
     system = _load_prompt("answer_judge.txt")

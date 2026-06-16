@@ -6,3 +6,8 @@ pydantic>=2.0.0
 streamlit>=1.35.0
 python-dotenv>=1.0.0
 pytest>=8.0.0
+
+# Optional cloud LLM backends (not needed for the default Ollama path)
+# groq>=0.11.0          # for MINUTEMIND_BACKEND=groq
+# google-genai>=1.0.0   # for MINUTEMIND_BACKEND=gemini
+# openai>=1.0.0         # for MINUTEMIND_BACKEND=openai

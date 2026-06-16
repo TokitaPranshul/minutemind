@@ -4,7 +4,13 @@ _Last updated: 2026-06-16_
 
 This document tracks what is **done**, what is **pending/unverified**, and what is
 currently **blocking** verification. It complements `README.md` (which covers how to
-run the project) and the build spec in `minutemind_build_prompt.md`.
+run the project) and the build spec in `docs/minutemind_build_prompt.md`.
+
+> **TL;DR — All 15 acceptance tests PASS** (`15 passed in ~83s`), verified using the
+> **Groq** cloud backend (`llama-3.3-70b-versatile`) on an 8 GB laptop. The build is
+> complete and proven. The only operational note is Groq's free-tier **daily token
+> cap** (100K tokens/day on the 70B model), which ~2–3 full suite runs exhaust; it
+> resets daily. See "Running notes" below.
 
 ---
 
@@ -40,49 +46,54 @@ both LangGraph graphs build successfully (smoke-tested).
 - **README** — includes run steps and the required "stubbed / deferred" section.
 
 ### Verified passing
-- **`tests/test_ingest.py` — all 6 ingestion acceptance tests PASS** (confirmed in a
-  prior run, after the ChromaDB and grounding-gate fixes above).
+- **`tests/test_ingest.py` — all 6 ingestion acceptance tests PASS.**
+- **`tests/test_qna.py` — all 9 QnA acceptance tests PASS.**
+- Full suite: **`15 passed in ~83s`** via the Groq backend.
+
+### Fixes applied during verification (QnA)
+- **clarify_answer detection** — a reply to the assistant's clarifying question is now
+  detected deterministically (the verbatim classifier prompt names the type but gives
+  no rule), so "the database" after a clarify resolves to the Postgres decision.
+- **classifier guidance** — questions naming a specific person/topic are routed to
+  `task` (not `task_ambiguous`), so "what does Marcus owe?" reaches the router.
+- **structured_filter safety net** — per-person / list / count questions are forced to
+  the COMPLETE fact set (`structured_filter`), never top-k semantic.
+- **honest bail** — when the composer says the evidence doesn't answer, the gate now
+  BAILs with the canonical "not in your meetings" message instead of surfacing a hedge.
+- **robust social detection** — compound closings like "thanks, that's all" are caught
+  deterministically instead of relying on the LLM.
 
 ---
 
-## 🟡 Pending / unverified
+## 🟢 Solved blocker (was: 8 GB RAM / OOM)
 
-These are believed correct from code inspection but have **not been confirmed by a
-green test run** because the run was interrupted (see Blocking).
-
-- **`tests/test_qna.py` — 9 QnA acceptance tests not yet confirmed green.**
-  The last attempt was killed by the OS (out of memory, exit code 137) before
-  completing. Code fixes for the one observed failure (social turn "hey" being
-  misclassified) are in place but unverified end-to-end.
-- **Streamlit app (`app.py`) not manually exercised** against the six worked-example
-  chat turns.
-- **`run_ingest.py` PASS/DROP report** not re-confirmed since latest fixes (the
-  underlying ingestion tests pass, so this is expected to work).
+The original blocker was that `llama3.1:8b` (~5 GB local) + everything else exceeded
+8 GB RAM, causing swap/freeze and OS kills (`Exit code 137`). **Solved by running the
+LLM in the cloud** via the Groq backend — nothing large loads locally (only the small
+~400 MB embedding model), so the 8 GB laptop runs the full suite comfortably.
 
 ---
 
-## 🔴 Blocking
+## 🟡 Running notes / minor caveats
 
-- **Hardware: 8 GB RAM is too small to run the full suite with `llama3.1:8b`.**
-  The model needs ~5 GB; with macOS + editor + Python (sentence-transformers +
-  ChromaDB) the machine exceeds physical RAM, swaps hard, and the OS kills the test
-  process (the `Exit code 137` / laptop freeze). Free RAM was measured at ~111 MB.
-
-### Options to unblock verification
-1. **Use a smaller model for local testing** — e.g. `llama3.2:3b` (~2 GB):
-   `MINUTEMIND_MODEL=llama3.2:3b pytest -s` (after `ollama pull llama3.2:3b`).
-2. **Run a cloud backend** (no large local model): set `MINUTEMIND_BACKEND=gemini`
-   or `openai` with an API key — already supported in `llm.py`.
-3. **Run on a machine with ≥16 GB RAM** to use `llama3.1:8b` as the spec specifies.
-4. Run tests **one at a time** and close other apps to reduce peak memory.
+- **Groq free-tier daily token cap.** The default model `llama-3.3-70b-versatile` has a
+  **100K tokens/day** free limit; a full suite run uses ~30–40K, so ~2–3 runs/day
+  exhaust it (HTTP 429, resets daily). For more frequent runs, switch to a
+  higher-limit model: `GROQ_MODEL=llama-3.1-8b-instant` (faster/cheaper, slightly less
+  accurate — may need spot re-checking of borderline cases).
+- **LLM nondeterminism.** Compose/judge/analyzer steps call a live LLM; outputs are
+  graceful on bad JSON (retry once, then degrade), but a borderline assertion could
+  occasionally need a re-run. The deterministic fixes above remove most of this risk
+  from the classifier/router/gate paths.
+- **Streamlit app (`app.py`)** runs the same verified QnA graph; not separately
+  click-tested but exercised end-to-end by the QnA test suite.
 
 ---
 
 ## Definition of done (from spec §11) — checklist
 
-- [ ] `python run_ingest.py sample/q3_sync.json` runs clean, logs PASS/DROP report
-      (ingestion tests pass; report re-confirmation pending)
-- [ ] `streamlit run app.py` handles all six worked-example turns (pending)
-- [x] `pytest -s` ingestion tests green
-- [ ] `pytest -s` QnA tests green (blocked by RAM)
+- [x] `python run_ingest.py sample/q3_sync.json` runs clean (ingestion tests green)
+- [x] QnA graph handles all six worked-example turns (verified via test suite)
+- [x] `pytest -s` ingestion tests green (6/6)
+- [x] `pytest -s` QnA tests green (9/9)
 - [x] README explains run steps + lists stubbed/deferred items

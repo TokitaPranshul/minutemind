@@ -20,9 +20,11 @@ Chroma collections, and `company_id` is a hard filter on every retrieval.
 - pydantic v2 — schema validation
 - Streamlit — chat UI
 
-Backend switch via `MINUTEMIND_BACKEND` (`ollama` default | `gemini` | `openai`).
+Backend switch via `MINUTEMIND_BACKEND` (`ollama` default | `groq` | `gemini` | `openai`).
 
 ## How to run
+
+### Option A — local Ollama (default, needs ~6 GB free RAM)
 
 ```
 python -m venv .venv && source .venv/bin/activate
@@ -35,10 +37,27 @@ pytest -s
 
 > Requires Python 3.11+ and a running Ollama server (`ollama serve`).
 
+### Option B — Groq cloud LLM (recommended on low-RAM machines, e.g. 8 GB)
+
+No large model loads locally — only the small embedding model. Get a free key at
+<https://console.groq.com/keys>, then:
+
+```
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt groq
+# in .env:  MINUTEMIND_BACKEND=groq  GROQ_API_KEY=gsk_...  GROQ_MODEL=llama-3.3-70b-versatile
+python run_ingest.py sample/q3_sync.json
+pytest -s
+```
+
+> The full acceptance suite (15 tests) was verified green this way on an 8 GB laptop.
+> Note Groq's free-tier daily token cap (~100K/day on the 70B model); use
+> `GROQ_MODEL=llama-3.1-8b-instant` for a higher limit.
+
 ## Configuration
 
 Copy `.env.example` to `.env` and adjust as needed. The default Ollama path
-requires no API key.
+requires no API key. See `STATUS.md` for current build status and verification notes.
 
 ## What's stubbed / deferred for this MVP
 
