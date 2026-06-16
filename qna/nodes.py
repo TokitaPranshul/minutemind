@@ -175,6 +175,20 @@ def rewrite_node(state):
 # ---------------------------------------------------------------------------
 # router
 # ---------------------------------------------------------------------------
+# questions about feelings/urgency/firmness -> the inferences collection (semantic)
+_INFERENCE_RE = re.compile(
+    r"\b(how (urgent|firm|committed|confident|tense|aligned)|"
+    r"urgenc(y|t)|"
+    r"how (did|do|does|is|are|was|were)\s+\w+\s+feel|"
+    r"how did (everyone|people|the team|they|things)\b|"
+    r"mood|sentiment|morale|tone|vibe|enthusiasm|"
+    r"disagreement|tension|friction|conflict|pushback|"
+    r"commitment|committed|"
+    r"feel(ings?)? about|"
+    r"confiden(t|ce))\b",
+    re.IGNORECASE,
+)
+
 # questions that need the COMPLETE set (per person / list / count) -> structured_filter
 _OWNER_AGG_RE = re.compile(
     r"\b(what (does|do|is|are)\s+\w+\s+(owe|owes|own|owns|need|have|responsible|"
@@ -210,9 +224,17 @@ def router_node(state):
             "filters": {},
             "note": "fallback",
         }
+    # deterministic safety net: sentiment/urgency/firmness questions must hit the
+    # INFERENCES collection (semantic), not facts (LLM routers miss this).
+    if _INFERENCE_RE.search(question):
+        route["intent"] = "inferential"
+        route["retrieval_mode"] = "semantic"
+        route["namespace"] = ["inferences", "chunks"]
+        route["filters"] = {}
+        route["note"] = (route.get("note") or "") + " [inferential nudge]"
     # deterministic safety net: per-person / aggregate questions must use the
     # complete fact set, never top-k semantic (LLM routers are inconsistent here).
-    if _OWNER_AGG_RE.search(question):
+    elif _OWNER_AGG_RE.search(question):
         route["intent"] = "factual_aggregate"
         route["retrieval_mode"] = "structured_filter"
         route["namespace"] = ["facts"]
