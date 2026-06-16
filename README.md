@@ -23,7 +23,9 @@ Chroma collections, and `company_id` is a hard filter on every retrieval.
 Backend switch via `MINUTEMIND_BACKEND` (`ollama` default | `groq` | `gemini` | `openai`).
 
 See **[docs/tech-stack.md](docs/tech-stack.md)** for what each tool does and *why* it was
-chosen (vector storage, embeddings, the LLM's role, Groq, LangGraph, etc.).
+chosen (vector storage, embeddings, the LLM's role, Groq, LangGraph, etc.), and
+**[docs/chat-flow.md](docs/chat-flow.md)** for the full question→answer flow with diagrams,
+every decision point, and which input triggers which node.
 
 ## How to run
 
